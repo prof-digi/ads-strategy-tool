@@ -6,8 +6,6 @@ from email.mime.multipart import MIMEMultipart
 import os
 
 # --- CONFIGURATION (Load from Streamlit Secrets or Environment Variables) ---
-# In Streamlit Cloud, you set these in the Dashboard settings.
-# Locally, you can set them in a .streamlit/secrets.toml file.
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
     EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]      # Your HostGator/Business Email
@@ -22,16 +20,20 @@ except FileNotFoundError:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # --- FUNCTION 1: GENERATE STRATEGY WITH GEMINI ---
-def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url, problems):
-    # You can keep your preferred model here
+# Updated to accept Name and Website URL
+def generate_ppc_strategy(first_name, last_name, company_name, company_url, industry, goal, budget, competitor_url, problems):
+    
+    # Using the specific model version you requested
     model = genai.GenerativeModel('gemini-flash-latest')
     
     prompt = f"""
     Act as a Senior Google Ads Strategist.
-    Create a tactical proposal for a UK-based client.
+    Create a tactical proposal for a UK-based client named {first_name} {last_name}.
     
     ### CLIENT PROFILE
+    - **Client Name:** {first_name} {last_name}
     - **Company:** {company_name}
+    - **Client Website:** {company_url}
     - **Industry:** {industry}
     - **Goal:** {goal}
     - **Budget:** £{budget}/month
@@ -39,17 +41,19 @@ def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url, 
     - **Competitor:** {competitor_url}
 
     ### REQUIRED OUTPUT (Markdown):
-    1. **Executive Summary**: 2 sentences on potential ROI given their budget of £{budget}.
-    2. **Pain Point Analysis**: 
+    1. **Executive Summary**: 2 sentences on potential ROI for {company_name} given the £{budget} budget.
+    2. **Website & Context Analysis**:
+       - Briefly mention how their website ({company_url}) aligns with their goals.
+    3. **Pain Point Analysis**: 
        - Address their specific problem ("{problems}") and explain exactly how to fix it.
-    3. **Competitor Reconnaissance**: 
+    4. **Competitor Reconnaissance**: 
        - Analyze {competitor_url}. Identify 2 specific weaknesses.
-    4. **Budget Split Table**: 
+    5. **Budget Split Table**: 
        - Exact breakdown of the £{budget} (e.g., Search vs. Retargeting). Use £ symbols.
-    5. **Keyword Strategy**:
+    6. **Keyword Strategy**:
        - 10 High-Intent Keywords (relevant to the UK market).
        - 5 Negative Keywords to block.
-    6. **Ad Copy Blueprint**:
+    7. **Ad Copy Blueprint**:
        - 1 Responsive Search Ad (3 Headlines, 2 Descriptions).
     """
     
@@ -58,7 +62,7 @@ def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url, 
         return response.text
     except Exception as e:
         return f"Error generating strategy: {e}"
-           
+            
 # --- FUNCTION 2: SEND EMAIL (Updated for HostGator TLS) ---
 def send_email_report(user_email, strategy_text, company_name):
     msg = MIMEMultipart()
@@ -80,7 +84,6 @@ def send_email_report(user_email, strategy_text, company_name):
 
     try:
         # 1. Connect using Port 587 (Standard TLS)
-        # Note: We use SMTP, not SMTP_SSL
         server = smtplib.SMTP(SMTP_SERVER, 587)
         
         # 2. Secure the connection
@@ -134,28 +137,37 @@ def main():
     if st.session_state['step'] == 1:
         with st.form("input_form"):
             col1, col2 = st.columns(2)
+            
             with col1:
+                first_name = st.text_input("First Name")
                 company = st.text_input("Company Name")
-                industry = st.text_input("Industry (e.g., Plumber)")
+                company_url = st.text_input("Your Website URL") # New Field
                 competitor = st.text_input("Competitor URL")
+                
             with col2:
+                last_name = st.text_input("Last Name")
+                industry = st.text_input("Industry (e.g., Plumber)")
                 goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
                 # Changed currency to GBP (£)
                 budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
 
-            # New Question Added Here
+            # Problems Question
             problems = st.text_area("What are your biggest problems with Google Ads right now?", 
-                                  placeholder="e.g. High cost per click, getting clicks but no sales, low quality leads...")
+                                    placeholder="e.g. High cost per click, getting clicks but no sales, low quality leads...")
 
             submitted = st.form_submit_button("GENERATE MY STRATEGY")
 
             if submitted:
-                if not company or not industry:
-                    st.warning("Please fill in all required fields.")
+                # Validate that new fields are filled
+                if not first_name or not company or not company_url:
+                    st.warning("Please fill in your Name, Company, and Website URL.")
                 else:
-                    with st.spinner("🕵️ Analyzing your specific challenges and generating roadmap..."):
-                        # Updated to pass 'problems' to the function
-                        strategy = generate_ppc_strategy(company, industry, goal, budget, competitor, problems)
+                    with st.spinner("🕵️ Analyzing your website and generating roadmap..."):
+                        # Updated function call with new arguments
+                        strategy = generate_ppc_strategy(
+                            first_name, last_name, company, company_url, 
+                            industry, goal, budget, competitor, problems
+                        )
                         
                         st.session_state['strategy_data'] = strategy
                         st.session_state['user_info'] = {'company': company, 'budget': budget}
@@ -167,7 +179,7 @@ def main():
         st.success("✅ Strategy Generated Successfully!")
         
         st.markdown(f"### 🔍 Analysis for {st.session_state['user_info']['company']}")
-        st.info("We have analyzed your pain points and found a **Budget Efficiency Fix**.")
+        st.info("We have analyzed your website and pain points to find a **Budget Efficiency Fix**.")
         
         st.markdown("---")
         st.markdown("### 🔒 Unlock Full Report")

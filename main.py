@@ -137,4 +137,78 @@ def main():
             with col1:
                 first_name = st.text_input("First Name")
                 company = st.text_input("Company Name")
-                company_url = st.text_input("Your Website URL
+                company_url = st.text_input("Your Website URL") # New Field
+                competitor = st.text_input("Competitor URL")
+                
+            with col2:
+                last_name = st.text_input("Last Name")
+                industry = st.text_input("Industry (e.g., Plumber)")
+                goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
+                budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
+
+            # Problems Question
+            problems = st.text_area("What are your biggest problems with Google Ads right now?", 
+                                    placeholder="e.g. High cost per click, getting clicks but no sales, low quality leads...")
+
+            submitted = st.form_submit_button("GENERATE MY STRATEGY")
+
+            if submitted:
+                # Validate inputs
+                if not first_name or not company or not company_url:
+                    st.warning("Please fill in your Name, Company, and Website URL.")
+                else:
+                    with st.spinner("🕵️ Analyzing your website and generating roadmap..."):
+                        strategy = generate_ppc_strategy(
+                            first_name, last_name, company, company_url, 
+                            industry, goal, budget, competitor, problems
+                        )
+                        
+                        st.session_state['strategy_data'] = strategy
+                        st.session_state['user_info'] = {'company': company, 'budget': budget}
+                        st.session_state['step'] = 2
+                        st.rerun()
+
+    # --- STEP 2: THE TEASER & EMAIL GATE ---
+    if st.session_state['step'] == 2:
+        st.success("✅ Strategy Generated Successfully!")
+        
+        st.markdown(f"### 🔍 Analysis for {st.session_state['user_info']['company']}")
+        st.info("We have analyzed your website and pain points to find a **Budget Efficiency Fix**.")
+        
+        st.markdown("---")
+        st.markdown("### 🔒 Unlock Full Report")
+        st.markdown("Enter your email to receive the full PDF report with Keyword Lists and Ad Copy.")
+
+        with st.form("email_gate"):
+            email = st.text_input("Your Email Address")
+            unlock_btn = st.form_submit_button("SEND ME THE REPORT")
+            
+            if unlock_btn:
+                if "@" not in email:
+                    st.error("Please enter a valid email.")
+                else:
+                    with st.spinner("📧 Sending report to your inbox..."):
+                        success = send_email_report(
+                            email, 
+                            st.session_state['strategy_data'], 
+                            st.session_state['user_info']['company']
+                        )
+                        
+                        if success:
+                            st.session_state['step'] = 3
+                            st.rerun()
+
+    # --- STEP 3: SUCCESS & DISPLAY ---
+    if st.session_state['step'] == 3:
+        st.balloons()
+        st.success("Report Sent! Check your inbox.")
+        
+        with st.expander("👀 View Report in Browser"):
+            st.markdown(st.session_state['strategy_data'])
+        
+        if st.button("Start Over"):
+            st.session_state['step'] = 1
+            st.rerun()
+
+if __name__ == "__main__":
+    main()

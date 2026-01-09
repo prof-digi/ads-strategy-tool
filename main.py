@@ -21,18 +21,34 @@ except FileNotFoundError:
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
+# --- HELPER: TEXT SANITIZER ---
+# This function removes emojis and fixes characters that crash the PDF generator
+def clean_for_pdf(text):
+    if not isinstance(text, str):
+        return str(text)
+    
+    # 1. Replace "Smart Quotes" and other common crashers
+    replacements = {
+        "’": "'", "‘": "'", "“": '"', "”": '"', 
+        "–": "-", "—": "-", "…": "..."
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+        
+    # 2. Force convert to Latin-1 (Standard PDF encoding)
+    # 'ignore' will simply delete emojis like 🚀 instead of crashing
+    return text.encode('latin-1', 'ignore').decode('latin-1')
+
 # --- PDF GENERATION CLASS ---
 class PDFReport(FPDF):
     def header(self):
         # Logo: Ensure 'logo.png' is in your GitHub repo
         if os.path.exists("logo.png"):
-            # x=10, y=8, w=33 (Adjust width as needed)
             self.image("logo.png", 10, 8, 33)
             
-        # Font for Company Name
         self.set_font('Arial', 'B', 12)
         self.cell(0, 10, 'Profitable.Digital Strategy Report', 0, 1, 'R')
-        self.ln(20) # Line break
+        self.ln(20)
 
     def footer(self):
         self.set_y(-15)
@@ -40,32 +56,22 @@ class PDFReport(FPDF):
         self.set_text_color(128)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-    def chapter_title(self, label):
-        self.set_font('Arial', 'B', 14)
-        self.set_text_color(0, 51, 102) # Dark Blue Brand Color
-        self.cell(0, 10, label, 0, 1, 'L')
-        self.ln(2)
-
-    def chapter_body(self, body):
-        self.set_font('Arial', '', 11)
-        self.set_text_color(50, 50, 50) # Dark Grey
-        self.multi_cell(0, 6, body)
-        self.ln()
-
-# --- HELPER: CLEAN MARKDOWN FOR PDF ---
 def create_pdf_report(raw_text, filename):
     pdf = PDFReport()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Simple parser to handle Gemini's Markdown
+    # Sanitize the raw text immediately
+    # We process line by line, but cleaning it first helps
+    
     lines = raw_text.split('\n')
     
     for line in lines:
-        clean_line = line.replace('*', '').strip() # Remove asterisks
+        # Clean the line of emojis/bad chars
+        clean_line = clean_for_pdf(line.replace('*', '').strip())
         
         if line.startswith('###') or line.startswith('**'):
-            # Treat as a sub-header
+            # Sub-header
             if clean_line:
                 pdf.set_font('Arial', 'B', 12)
                 pdf.set_text_color(0, 0, 0)
@@ -75,6 +81,7 @@ def create_pdf_report(raw_text, filename):
             pdf.set_font('Arial', '', 11)
             pdf.set_text_color(50, 50, 50)
             pdf.cell(5) # Indent
+            # chr(149) is a bullet point in Latin-1
             pdf.cell(0, 6, f"{chr(149)} {clean_line[1:].strip()}", 0, 1)
         else:
             # Regular text
@@ -82,6 +89,7 @@ def create_pdf_report(raw_text, filename):
                 pdf.set_font('Arial', '', 11)
                 pdf.set_text_color(50, 50, 50)
                 pdf.multi_cell(0, 6, clean_line)
+                pdf.ln(2) # Small gap after paragraphs
                 
     pdf.output(filename)
     return filename
@@ -104,7 +112,7 @@ def generate_ppc_strategy(first_name, last_name, company_name, company_url, indu
     - **Competitor:** {competitor_url}
 
     ### REQUIRED OUTPUT (Clean Text for PDF):
-    Please format the response clearly. 
+    Please format the response clearly. Do not use complex markdown tables, just lists and headers.
     1. **Executive Summary**: 2 sentences on potential ROI.
     2. **Website Analysis**: How {company_url} aligns with goals.
     3. **Pain Point Analysis**: Fixes for: {problems}.
@@ -136,16 +144,20 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
     msg.attach(MIMEText(body, 'html'))
     
     # Generate PDF
-    pdf_filename = f"{company_name.replace(' ', '_')}_Strategy.pdf"
-    create_pdf_report(strategy_text, pdf_filename)
+    # Clean the company name for filename (remove spaces/bad chars)
+    safe_name = "".join([c for c in company_name if c.isalnum() or c==' ']).strip().replace(' ', '_')
+    pdf_filename = f"{safe_name}_Strategy.pdf"
     
-    # Attach PDF
-    with open(pdf_filename, "rb") as f:
-        attach = MIMEApplication(f.read(),_subtype="pdf")
-        attach.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
-        msg.attach(attach)
-
     try:
+        create_pdf_report(strategy_text, pdf_filename)
+        
+        # Attach PDF
+        with open(pdf_filename, "rb") as f:
+            attach = MIMEApplication(f.read(),_subtype="pdf")
+            attach.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+            msg.attach(attach)
+
+        # Connect to Gmail (Port 587)
         server = smtplib.SMTP(SMTP_SERVER, 587)
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
@@ -153,13 +165,14 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
         # Send to Client
         server.sendmail(EMAIL_ADDRESS, user_email, msg.as_string())
         
-        # Send to Admin (without attachment to save space, or with it if you prefer)
+        # Send to Admin
         server.sendmail(EMAIL_ADDRESS, YOUR_ADMIN_EMAIL, msg.as_string())
         
         server.quit()
         return True
+        
     except Exception as e:
-        st.error(f"❌ Email Failed: {e}")
+        st.error(f"❌ Email/PDF Failed: {e}")
         return False
 
 # --- MAIN UI ---
@@ -167,7 +180,6 @@ def main():
     st.set_page_config(page_title="Free Google Ads Strategy Generator", page_icon="🚀")
     st.markdown("""<style>.stButton>button {width: 100%; background-color: #000000; color: white; border-radius: 5px;}</style>""", unsafe_allow_html=True)
     
-    # Display Logo on App if available
     if os.path.exists("logo.png"):
         st.image("logo.png", width=150)
         

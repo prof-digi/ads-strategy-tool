@@ -11,7 +11,7 @@ try:
     EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]    # Your Email Password
     SMTP_SERVER = st.secrets["SMTP_SERVER"]          # mail.jellywebstudio.com
     # We default to 465 now based on your successful test
-    SMTP_PORT = st.secrets.get("SMTP_PORT", 465)     
+    SMTP_PORT = int(st.secrets.get("SMTP_PORT", 465))     
     YOUR_ADMIN_EMAIL = "joe@profitable.digital"          # Where you receive the leads
 except FileNotFoundError:
     st.error("Secrets not found. Please set up your .streamlit/secrets.toml file.")

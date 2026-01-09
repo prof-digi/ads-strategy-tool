@@ -24,7 +24,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 # --- FUNCTION 1: GENERATE STRATEGY WITH GEMINI ---
 def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url, problems):
     # You can keep your preferred model here
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model = genai.GenerativeModel('gemini-flash-latest')
     
     prompt = f"""
     Act as a Senior Google Ads Strategist.

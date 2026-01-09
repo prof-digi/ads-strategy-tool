@@ -22,31 +22,35 @@ except FileNotFoundError:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # --- FUNCTION 1: GENERATE STRATEGY WITH GEMINI ---
-def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url):
-    model = genai.GenerativeModel('gemini-flash-latest')
+def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url, problems):
+    # You can keep your preferred model here
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     prompt = f"""
     Act as a Senior Google Ads Strategist.
-    Create a tactical proposal for a client.
+    Create a tactical proposal for a UK-based client.
     
     ### CLIENT PROFILE
     - **Company:** {company_name}
     - **Industry:** {industry}
     - **Goal:** {goal}
-    - **Budget:** ${budget}/month
+    - **Budget:** £{budget}/month
+    - **Current Pain Points:** {problems}
     - **Competitor:** {competitor_url}
 
     ### REQUIRED OUTPUT (Markdown):
-    1. **Executive Summary**: 2 sentences on potential ROI.
-    2. **Competitor Reconnaissance**: 
-       - Analyze {competitor_url}. Identify 2 specific weaknesses in their likely digital strategy.
-    3. **Budget Split Table**: 
-       - Exact breakdown of the ${budget} (e.g., Search vs. Retargeting).
-    4. **Keyword Strategy**:
-       - 10 High-Intent Keywords.
+    1. **Executive Summary**: 2 sentences on potential ROI given their budget of £{budget}.
+    2. **Pain Point Analysis**: 
+       - Address their specific problem ("{problems}") and explain exactly how to fix it.
+    3. **Competitor Reconnaissance**: 
+       - Analyze {competitor_url}. Identify 2 specific weaknesses.
+    4. **Budget Split Table**: 
+       - Exact breakdown of the £{budget} (e.g., Search vs. Retargeting). Use £ symbols.
+    5. **Keyword Strategy**:
+       - 10 High-Intent Keywords (relevant to the UK market).
        - 5 Negative Keywords to block.
-    5. **Ad Copy Blueprint**:
-       - 1 Responsive Search Ad (3 Headlines, 2 Descriptions) that directly counters the competitor's weakness.
+    6. **Ad Copy Blueprint**:
+       - 1 Responsive Search Ad (3 Headlines, 2 Descriptions).
     """
     
     try:
@@ -54,7 +58,7 @@ def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url):
         return response.text
     except Exception as e:
         return f"Error generating strategy: {e}"
-
+           
 # --- FUNCTION 2: SEND EMAIL (Updated for HostGator TLS) ---
 def send_email_report(user_email, strategy_text, company_name):
     msg = MIMEMultipart()
@@ -106,15 +110,14 @@ def send_email_report(user_email, strategy_text, company_name):
         # This will print the exact error to your app screen so we can see it
         st.error(f"❌ Email Failed. Error details: {e}")
         return False
+        
 # --- MAIN STREAMLIT UI ---
 def main():
     st.set_page_config(page_title="Free Google Ads Strategy Generator", page_icon="🚀")
 
-    # Custom CSS to make it look cleaner
     st.markdown("""
     <style>
     .stButton>button {width: 100%; background-color: #FF4B4B; color: white;}
-    .report-box {border: 1px solid #ddd; padding: 20px; border-radius: 10px; background-color: #f9f9f9;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -137,7 +140,12 @@ def main():
                 competitor = st.text_input("Competitor URL")
             with col2:
                 goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
-                budget = st.number_input("Monthly Budget ($)", min_value=500, value=1500)
+                # Changed currency to GBP (£)
+                budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
+
+            # New Question Added Here
+            problems = st.text_area("What are your biggest problems with Google Ads right now?", 
+                                  placeholder="e.g. High cost per click, getting clicks but no sales, low quality leads...")
 
             submitted = st.form_submit_button("GENERATE MY STRATEGY")
 
@@ -145,9 +153,10 @@ def main():
                 if not company or not industry:
                     st.warning("Please fill in all required fields.")
                 else:
-                    with st.spinner("🕵️ Analyzing competitor data and generating roadmap..."):
-                        # Call Gemini
-                        strategy = generate_ppc_strategy(company, industry, goal, budget, competitor)
+                    with st.spinner("🕵️ Analyzing your specific challenges and generating roadmap..."):
+                        # Updated to pass 'problems' to the function
+                        strategy = generate_ppc_strategy(company, industry, goal, budget, competitor, problems)
+                        
                         st.session_state['strategy_data'] = strategy
                         st.session_state['user_info'] = {'company': company, 'budget': budget}
                         st.session_state['step'] = 2
@@ -157,9 +166,8 @@ def main():
     if st.session_state['step'] == 2:
         st.success("✅ Strategy Generated Successfully!")
         
-        # Teaser (Blurred/Limited View)
         st.markdown(f"### 🔍 Analysis for {st.session_state['user_info']['company']}")
-        st.info("We identified **3 Major Opportunities** and **1 Critical Competitor Weakness**.")
+        st.info("We have analyzed your pain points and found a **Budget Efficiency Fix**.")
         
         st.markdown("---")
         st.markdown("### 🔒 Unlock Full Report")
@@ -189,7 +197,6 @@ def main():
         st.balloons()
         st.success("Report Sent! Check your inbox.")
         
-        # Reward: Show the report on screen now
         with st.expander("👀 View Report in Browser"):
             st.markdown(st.session_state['strategy_data'])
         

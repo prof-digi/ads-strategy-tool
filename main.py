@@ -10,20 +10,17 @@ try:
     EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]
     EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]
     SMTP_SERVER = st.secrets["SMTP_SERVER"]
-    # We force this to 587 now based on your new settings
-    SMTP_PORT = 587     
-    YOUR_ADMIN_EMAIL = "joe@profitable.digital"
+    SMTP_PORT = 587 # Force 587 for Gmail
+    YOUR_ADMIN_EMAIL = "you@youragency.com"
 except FileNotFoundError:
     st.error("Secrets not found. Please set up your .streamlit/secrets.toml file.")
     st.stop()
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# --- FUNCTION 1: GENERATE STRATEGY WITH GEMINI ---
+# --- FUNCTION 1: GENERATE STRATEGY ---
 def generate_ppc_strategy(first_name, last_name, company_name, company_url, industry, goal, budget, competitor_url, problems):
-    
     model = genai.GenerativeModel('gemini-flash-latest')
-    
     prompt = f"""
     Act as a Senior Google Ads Strategist.
     Create a tactical proposal for a UK-based client named {first_name} {last_name}.
@@ -54,21 +51,19 @@ def generate_ppc_strategy(first_name, last_name, company_name, company_url, indu
     7. **Ad Copy Blueprint**:
        - 1 Responsive Search Ad (3 Headlines, 2 Descriptions).
     """
-    
     try:
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Error generating strategy: {e}"
-            
-# --- FUNCTION 2: SEND EMAIL (UPDATED FOR PORT 587 / STARTTLS) ---
+
+# --- FUNCTION 2: SEND EMAIL (GMAIL STANDARD) ---
 def send_email_report(user_email, strategy_text, company_name):
     msg = MIMEMultipart()
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = user_email
     msg['Subject'] = f"🚀 Your Google Ads Strategy for {company_name}"
 
-    # Email Body (HTML)
     body = f"""
     <h2>Your Custom Google Ads Roadmap is Ready</h2>
     <p>Hi there,</p>
@@ -81,20 +76,15 @@ def send_email_report(user_email, strategy_text, company_name):
     msg.attach(MIMEText(body, 'html'))
 
     try:
-        # --- NEW LOGIC FOR PORT 587 ---
-        # 1. Connect insecurely first
+        # Standard Gmail Logic
         server = smtplib.SMTP(SMTP_SERVER, 587)
-        
-        # 2. Upgrade connection to secure TLS
-        server.starttls()
-        
-        # 3. Login
+        server.starttls() 
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         
-        # 4. Send
+        # Send to Client
         server.sendmail(EMAIL_ADDRESS, user_email, msg.as_string())
         
-        # 5. Send Admin Copy
+        # Send to Admin
         admin_msg = MIMEMultipart()
         admin_msg['From'] = EMAIL_ADDRESS
         admin_msg['To'] = YOUR_ADMIN_EMAIL
@@ -106,95 +96,69 @@ def send_email_report(user_email, strategy_text, company_name):
         
         server.quit()
         return True
-        
     except Exception as e:
         st.error(f"❌ Email Failed. Error details: {e}")
         return False
-        
-# --- MAIN STREAMLIT UI ---
+
+# --- MAIN UI ---
 def main():
     st.set_page_config(page_title="Free Google Ads Strategy Generator", page_icon="🚀")
-
-    st.markdown("""
-    <style>
-    .stButton>button {width: 100%; background-color: #FF4B4B; color: white;}
-    </style>
-    """, unsafe_allow_html=True)
-
+    st.markdown("""<style>.stButton>button {width: 100%; background-color: #FF4B4B; color: white;}</style>""", unsafe_allow_html=True)
     st.title("🚀 Free Google Ads Strategy Generator")
     st.markdown("Enter your business details below to get a **custom roadmap**, **competitor analysis**, and **budget plan**.")
 
-    if 'step' not in st.session_state:
-        st.session_state['step'] = 1
-    if 'strategy_data' not in st.session_state:
-        st.session_state['strategy_data'] = ""
+    if 'step' not in st.session_state: st.session_state['step'] = 1
+    if 'strategy_data' not in st.session_state: st.session_state['strategy_data'] = ""
 
-    # --- STEP 1: COLLECT DATA ---
+    # STEP 1
     if st.session_state['step'] == 1:
         with st.form("input_form"):
             col1, col2 = st.columns(2)
-            
             with col1:
                 first_name = st.text_input("First Name")
                 company = st.text_input("Company Name")
                 company_url = st.text_input("Your Website URL") 
                 competitor = st.text_input("Competitor URL")
-                
             with col2:
                 last_name = st.text_input("Last Name")
                 industry = st.text_input("Industry (e.g., Plumber)")
                 goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
                 budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
-
-            problems = st.text_area("What are your biggest problems with Google Ads right now?", 
-                                    placeholder="e.g. High cost per click, getting clicks but no sales, low quality leads...")
-
-            submitted = st.form_submit_button("GENERATE MY STRATEGY")
-
-            if submitted:
+            problems = st.text_area("What are your biggest problems with Google Ads right now?", placeholder="e.g. High cost...")
+            
+            if st.form_submit_button("GENERATE MY STRATEGY"):
                 if not first_name or not company or not company_url:
                     st.warning("Please fill in your Name, Company, and Website URL.")
                 else:
-                    with st.spinner("🕵️ Analyzing your website and generating roadmap..."):
-                        strategy = generate_ppc_strategy(
-                            first_name, last_name, company, company_url, 
-                            industry, goal, budget, competitor, problems
-                        )
+                    with st.spinner("🕵️ Analyzing..."):
+                        strategy = generate_ppc_strategy(first_name, last_name, company, company_url, industry, goal, budget, competitor, problems)
                         st.session_state['strategy_data'] = strategy
                         st.session_state['user_info'] = {'company': company, 'budget': budget}
                         st.session_state['step'] = 2
                         st.rerun()
 
-    # --- STEP 2: EMAIL GATE ---
+    # STEP 2
     if st.session_state['step'] == 2:
         st.success("✅ Strategy Generated Successfully!")
         st.markdown(f"### 🔍 Analysis for {st.session_state['user_info']['company']}")
         st.info("We have analyzed your website and pain points to find a **Budget Efficiency Fix**.")
         st.markdown("---")
         st.markdown("### 🔒 Unlock Full Report")
-        st.markdown("Enter your email to receive the full PDF report with Keyword Lists and Ad Copy.")
+        st.markdown("Enter your email to receive the full PDF report.")
 
         with st.form("email_gate"):
             email = st.text_input("Your Email Address")
-            unlock_btn = st.form_submit_button("SEND ME THE REPORT")
-            
-            if unlock_btn:
+            if st.form_submit_button("SEND ME THE REPORT"):
                 if "@" not in email:
                     st.error("Please enter a valid email.")
                 else:
-                    with st.spinner("📧 Sending report to your inbox..."):
-                        # Attempt to send
-                        success = send_email_report(
-                            email, 
-                            st.session_state['strategy_data'], 
-                            st.session_state['user_info']['company']
-                        )
-                        
+                    with st.spinner("📧 Sending..."):
+                        success = send_email_report(email, st.session_state['strategy_data'], st.session_state['user_info']['company'])
                         if success:
                             st.session_state['step'] = 3
                             st.rerun()
 
-    # --- STEP 3: SUCCESS ---
+    # STEP 3
     if st.session_state['step'] == 3:
         st.balloons()
         st.success("Report Sent! Check your inbox.")

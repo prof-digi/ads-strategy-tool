@@ -3,15 +3,15 @@ import google.generativeai as genai
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import os
 
-# --- CONFIGURATION (Load from Streamlit Secrets or Environment Variables) ---
+# --- CONFIGURATION ---
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]      # Your HostGator/Business Email
+    EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]      # mail@jellywebstudio.com
     EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]    # Your Email Password
-    SMTP_SERVER = st.secrets["SMTP_SERVER"]          # e.g., mail.yourdomain.com
-    SMTP_PORT = st.secrets.get("SMTP_PORT", 465)     # Usually 465 for SSL or 587 for TLS
+    SMTP_SERVER = st.secrets["SMTP_SERVER"]          # mail.jellywebstudio.com
+    # We default to 465 now based on your HostGator settings
+    SMTP_PORT = st.secrets.get("SMTP_PORT", 465)     
     YOUR_ADMIN_EMAIL = "you@youragency.com"          # Where you receive the leads
 except FileNotFoundError:
     st.error("Secrets not found. Please set up your .streamlit/secrets.toml file.")
@@ -20,10 +20,9 @@ except FileNotFoundError:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # --- FUNCTION 1: GENERATE STRATEGY WITH GEMINI ---
-# Updated to accept Name and Website URL
 def generate_ppc_strategy(first_name, last_name, company_name, company_url, industry, goal, budget, competitor_url, problems):
     
-    # Using the specific model version you requested
+    # REQUIRED: Use the 'gemini-flash-latest' model
     model = genai.GenerativeModel('gemini-flash-latest')
     
     prompt = f"""
@@ -63,7 +62,7 @@ def generate_ppc_strategy(first_name, last_name, company_name, company_url, indu
     except Exception as e:
         return f"Error generating strategy: {e}"
             
-# --- FUNCTION 2: SEND EMAIL (Updated for HostGator TLS) ---
+# --- FUNCTION 2: SEND EMAIL (FIXED FOR HOSTGATOR SSL PORT 465) ---
 def send_email_report(user_email, strategy_text, company_name):
     msg = MIMEMultipart()
     msg['From'] = EMAIL_ADDRESS
@@ -83,19 +82,20 @@ def send_email_report(user_email, strategy_text, company_name):
     msg.attach(MIMEText(body, 'html'))
 
     try:
-        # 1. Connect using Port 587 (Standard TLS)
-        server = smtplib.SMTP(SMTP_SERVER, 587)
+        # --- FIXED CONNECTION LOGIC FOR PORT 465 ---
+        # HostGator recommends SSL (Port 465). 
+        # We use SMTP_SSL, which encrypts the connection from the start.
+        # We do NOT use server.starttls() here because the connection is already secure.
         
-        # 2. Secure the connection
-        server.starttls() 
+        server = smtplib.SMTP_SSL(SMTP_SERVER, 465)
         
-        # 3. Login
+        # Login
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         
-        # 4. Send to User
+        # Send to User
         server.sendmail(EMAIL_ADDRESS, user_email, msg.as_string())
         
-        # 5. Send Copy to YOU
+        # Send Copy to YOU
         admin_msg = MIMEMultipart()
         admin_msg['From'] = EMAIL_ADDRESS
         admin_msg['To'] = YOUR_ADMIN_EMAIL
@@ -110,7 +110,6 @@ def send_email_report(user_email, strategy_text, company_name):
         return True
         
     except Exception as e:
-        # This will print the exact error to your app screen so we can see it
         st.error(f"❌ Email Failed. Error details: {e}")
         return False
         
@@ -148,7 +147,6 @@ def main():
                 last_name = st.text_input("Last Name")
                 industry = st.text_input("Industry (e.g., Plumber)")
                 goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
-                # Changed currency to GBP (£)
                 budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
 
             # Problems Question
@@ -158,12 +156,11 @@ def main():
             submitted = st.form_submit_button("GENERATE MY STRATEGY")
 
             if submitted:
-                # Validate that new fields are filled
+                # Validate inputs
                 if not first_name or not company or not company_url:
                     st.warning("Please fill in your Name, Company, and Website URL.")
                 else:
                     with st.spinner("🕵️ Analyzing your website and generating roadmap..."):
-                        # Updated function call with new arguments
                         strategy = generate_ppc_strategy(
                             first_name, last_name, company, company_url, 
                             industry, goal, budget, competitor, problems

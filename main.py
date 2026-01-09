@@ -55,7 +55,7 @@ def generate_ppc_strategy(company_name, industry, goal, budget, competitor_url):
     except Exception as e:
         return f"Error generating strategy: {e}"
 
-# --- FUNCTION 2: SEND EMAIL (Via HostGator SMTP) ---
+# --- FUNCTION 2: SEND EMAIL (Updated for HostGator TLS) ---
 def send_email_report(user_email, strategy_text, company_name):
     msg = MIMEMultipart()
     msg['From'] = EMAIL_ADDRESS
@@ -75,12 +75,20 @@ def send_email_report(user_email, strategy_text, company_name):
     msg.attach(MIMEText(body, 'html'))
 
     try:
-        # Connect to HostGator SMTP (SSL)
-        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) 
+        # 1. Connect using Port 587 (Standard TLS)
+        # Note: We use SMTP, not SMTP_SSL
+        server = smtplib.SMTP(SMTP_SERVER, 587)
+        
+        # 2. Secure the connection
+        server.starttls() 
+        
+        # 3. Login
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        
+        # 4. Send to User
         server.sendmail(EMAIL_ADDRESS, user_email, msg.as_string())
         
-        # Send a Copy to YOU (The Agency)
+        # 5. Send Copy to YOU
         admin_msg = MIMEMultipart()
         admin_msg['From'] = EMAIL_ADDRESS
         admin_msg['To'] = YOUR_ADMIN_EMAIL
@@ -95,10 +103,9 @@ def send_email_report(user_email, strategy_text, company_name):
         return True
         
     except Exception as e:
-        # This 'except' block must align with the 'try' block above
-        st.error(f"Email Error: {e}")
+        # This will print the exact error to your app screen so we can see it
+        st.error(f"❌ Email Failed. Error details: {e}")
         return False
-
 # --- MAIN STREAMLIT UI ---
 def main():
     st.set_page_config(page_title="Free Google Ads Strategy Generator", page_icon="🚀")

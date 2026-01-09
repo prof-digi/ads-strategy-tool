@@ -84,3 +84,111 @@ def send_email_report(user_email, strategy_text, company_name):
         admin_msg = MIMEMultipart()
         admin_msg['From'] = EMAIL_ADDRESS
         admin_msg['To'] = YOUR_ADMIN_EMAIL
+        admin_msg['Subject'] = f"🔔 NEW LEAD: {company_name}"
+        
+        admin_body = f"New lead generated!\n\nEmail: {user_email}\nCompany: {company_name}\n\nReport:\n{strategy_text}"
+        admin_msg.attach(MIMEText(admin_body, 'plain'))
+        
+        server.sendmail(EMAIL_ADDRESS, YOUR_ADMIN_EMAIL, admin_msg.as_string())
+        
+        server.quit()
+        return True
+        
+    except Exception as e:
+        # This 'except' block must align with the 'try' block above
+        st.error(f"Email Error: {e}")
+        return False
+
+# --- MAIN STREAMLIT UI ---
+def main():
+    st.set_page_config(page_title="Free Google Ads Strategy Generator", page_icon="🚀")
+
+    # Custom CSS to make it look cleaner
+    st.markdown("""
+    <style>
+    .stButton>button {width: 100%; background-color: #FF4B4B; color: white;}
+    .report-box {border: 1px solid #ddd; padding: 20px; border-radius: 10px; background-color: #f9f9f9;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.title("🚀 Free Google Ads Strategy Generator")
+    st.markdown("Enter your business details below to get a **custom roadmap**, **competitor analysis**, and **budget plan**.")
+
+    # Initialize Session State
+    if 'step' not in st.session_state:
+        st.session_state['step'] = 1
+    if 'strategy_data' not in st.session_state:
+        st.session_state['strategy_data'] = ""
+
+    # --- STEP 1: COLLECT DATA ---
+    if st.session_state['step'] == 1:
+        with st.form("input_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                company = st.text_input("Company Name")
+                industry = st.text_input("Industry (e.g., Plumber)")
+                competitor = st.text_input("Competitor URL")
+            with col2:
+                goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
+                budget = st.number_input("Monthly Budget ($)", min_value=500, value=1500)
+
+            submitted = st.form_submit_button("GENERATE MY STRATEGY")
+
+            if submitted:
+                if not company or not industry:
+                    st.warning("Please fill in all required fields.")
+                else:
+                    with st.spinner("🕵️ Analyzing competitor data and generating roadmap..."):
+                        # Call Gemini
+                        strategy = generate_ppc_strategy(company, industry, goal, budget, competitor)
+                        st.session_state['strategy_data'] = strategy
+                        st.session_state['user_info'] = {'company': company, 'budget': budget}
+                        st.session_state['step'] = 2
+                        st.rerun()
+
+    # --- STEP 2: THE TEASER & EMAIL GATE ---
+    if st.session_state['step'] == 2:
+        st.success("✅ Strategy Generated Successfully!")
+        
+        # Teaser (Blurred/Limited View)
+        st.markdown(f"### 🔍 Analysis for {st.session_state['user_info']['company']}")
+        st.info("We identified **3 Major Opportunities** and **1 Critical Competitor Weakness**.")
+        
+        st.markdown("---")
+        st.markdown("### 🔒 Unlock Full Report")
+        st.markdown("Enter your email to receive the full PDF report with Keyword Lists and Ad Copy.")
+
+        with st.form("email_gate"):
+            email = st.text_input("Your Email Address")
+            unlock_btn = st.form_submit_button("SEND ME THE REPORT")
+            
+            if unlock_btn:
+                if "@" not in email:
+                    st.error("Please enter a valid email.")
+                else:
+                    with st.spinner("📧 Sending report to your inbox..."):
+                        success = send_email_report(
+                            email, 
+                            st.session_state['strategy_data'], 
+                            st.session_state['user_info']['company']
+                        )
+                        
+                        if success:
+                            st.session_state['step'] = 3
+                            st.rerun()
+
+    # --- STEP 3: SUCCESS & DISPLAY ---
+    if st.session_state['step'] == 3:
+        st.balloons()
+        st.success("Report Sent! Check your inbox.")
+        
+        # Reward: Show the report on screen now
+        with st.expander("👀 View Report in Browser"):
+            st.markdown(st.session_state['strategy_data'])
+        
+        if st.button("Start Over"):
+            st.session_state['step'] = 1
+            st.rerun()
+
+if __name__ == "__main__":
+    main()

@@ -3,6 +3,9 @@ import google.generativeai as genai
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from fpdf import FPDF
+import os
 
 # --- CONFIGURATION ---
 try:
@@ -10,13 +13,78 @@ try:
     EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]
     EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]
     SMTP_SERVER = st.secrets["SMTP_SERVER"]
-    SMTP_PORT = 587 # Force 587 for Gmail
-    YOUR_ADMIN_EMAIL = "you@youragency.com"
+    SMTP_PORT = 587
+    YOUR_ADMIN_EMAIL = "joe@profitable.digital"
 except FileNotFoundError:
     st.error("Secrets not found. Please set up your .streamlit/secrets.toml file.")
     st.stop()
 
 genai.configure(api_key=GOOGLE_API_KEY)
+
+# --- PDF GENERATION CLASS ---
+class PDFReport(FPDF):
+    def header(self):
+        # Logo: Ensure 'logo.png' is in your GitHub repo
+        if os.path.exists("logo.png"):
+            # x=10, y=8, w=33 (Adjust width as needed)
+            self.image("logo.png", 10, 8, 33)
+            
+        # Font for Company Name
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, 'Profitable.Digital Strategy Report', 0, 1, 'R')
+        self.ln(20) # Line break
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(128)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+    def chapter_title(self, label):
+        self.set_font('Arial', 'B', 14)
+        self.set_text_color(0, 51, 102) # Dark Blue Brand Color
+        self.cell(0, 10, label, 0, 1, 'L')
+        self.ln(2)
+
+    def chapter_body(self, body):
+        self.set_font('Arial', '', 11)
+        self.set_text_color(50, 50, 50) # Dark Grey
+        self.multi_cell(0, 6, body)
+        self.ln()
+
+# --- HELPER: CLEAN MARKDOWN FOR PDF ---
+def create_pdf_report(raw_text, filename):
+    pdf = PDFReport()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Simple parser to handle Gemini's Markdown
+    lines = raw_text.split('\n')
+    
+    for line in lines:
+        clean_line = line.replace('*', '').strip() # Remove asterisks
+        
+        if line.startswith('###') or line.startswith('**'):
+            # Treat as a sub-header
+            if clean_line:
+                pdf.set_font('Arial', 'B', 12)
+                pdf.set_text_color(0, 0, 0)
+                pdf.cell(0, 8, clean_line, 0, 1)
+        elif line.startswith('-'):
+            # Bullet point
+            pdf.set_font('Arial', '', 11)
+            pdf.set_text_color(50, 50, 50)
+            pdf.cell(5) # Indent
+            pdf.cell(0, 6, f"{chr(149)} {clean_line[1:].strip()}", 0, 1)
+        else:
+            # Regular text
+            if clean_line:
+                pdf.set_font('Arial', '', 11)
+                pdf.set_text_color(50, 50, 50)
+                pdf.multi_cell(0, 6, clean_line)
+                
+    pdf.output(filename)
+    return filename
 
 # --- FUNCTION 1: GENERATE STRATEGY ---
 def generate_ppc_strategy(first_name, last_name, company_name, company_url, industry, goal, budget, competitor_url, problems):
@@ -35,21 +103,15 @@ def generate_ppc_strategy(first_name, last_name, company_name, company_url, indu
     - **Current Pain Points:** {problems}
     - **Competitor:** {competitor_url}
 
-    ### REQUIRED OUTPUT (Markdown):
-    1. **Executive Summary**: 2 sentences on potential ROI for {company_name} given the £{budget} budget.
-    2. **Website & Context Analysis**:
-       - Briefly mention how their website ({company_url}) aligns with their goals.
-    3. **Pain Point Analysis**: 
-       - Address their specific problem ("{problems}") and explain exactly how to fix it.
-    4. **Competitor Reconnaissance**: 
-       - Analyze {competitor_url}. Identify 2 specific weaknesses.
-    5. **Budget Split Table**: 
-       - Exact breakdown of the £{budget} (e.g., Search vs. Retargeting). Use £ symbols.
-    6. **Keyword Strategy**:
-       - 10 High-Intent Keywords (relevant to the UK market).
-       - 5 Negative Keywords to block.
-    7. **Ad Copy Blueprint**:
-       - 1 Responsive Search Ad (3 Headlines, 2 Descriptions).
+    ### REQUIRED OUTPUT (Clean Text for PDF):
+    Please format the response clearly. 
+    1. **Executive Summary**: 2 sentences on potential ROI.
+    2. **Website Analysis**: How {company_url} aligns with goals.
+    3. **Pain Point Analysis**: Fixes for: {problems}.
+    4. **Competitor Weaknesses**: Analysis of {competitor_url}.
+    5. **Budget Split**: Breakdown of £{budget}.
+    6. **Keyword Strategy**: 10 Keywords & 5 Negatives.
+    7. **Ad Copy**: 3 Headlines, 2 Descriptions.
     """
     try:
         response = model.generate_content(prompt)
@@ -57,53 +119,58 @@ def generate_ppc_strategy(first_name, last_name, company_name, company_url, indu
     except Exception as e:
         return f"Error generating strategy: {e}"
 
-# --- FUNCTION 2: SEND EMAIL (GMAIL STANDARD) ---
-def send_email_report(user_email, strategy_text, company_name):
+# --- FUNCTION 2: SEND EMAIL WITH PDF ---
+def send_email_with_pdf(user_email, strategy_text, company_name):
     msg = MIMEMultipart()
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = user_email
-    msg['Subject'] = f"🚀 Your Google Ads Strategy for {company_name}"
+    msg['Subject'] = f"🚀 Your Strategy Report for {company_name}"
 
+    # Email Body
     body = f"""
-    <h2>Your Custom Google Ads Roadmap is Ready</h2>
     <p>Hi there,</p>
-    <p>Here is the strategy report we generated for <b>{company_name}</b>.</p>
-    <hr>
-    {strategy_text.replace(chr(10), '<br>')} 
-    <hr>
-    <p>Ready to implement this? Reply to this email to book a free 15-minute consultation.</p>
+    <p>Please find attached your custom Google Ads strategy report for <b>{company_name}</b>.</p>
+    <p>We have analyzed your website and competitors to build this roadmap.</p>
+    <p>Best regards,<br>Profitable Digital Team</p>
     """
     msg.attach(MIMEText(body, 'html'))
+    
+    # Generate PDF
+    pdf_filename = f"{company_name.replace(' ', '_')}_Strategy.pdf"
+    create_pdf_report(strategy_text, pdf_filename)
+    
+    # Attach PDF
+    with open(pdf_filename, "rb") as f:
+        attach = MIMEApplication(f.read(),_subtype="pdf")
+        attach.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+        msg.attach(attach)
 
     try:
-        # Standard Gmail Logic
         server = smtplib.SMTP(SMTP_SERVER, 587)
-        server.starttls() 
+        server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         
         # Send to Client
         server.sendmail(EMAIL_ADDRESS, user_email, msg.as_string())
         
-        # Send to Admin
-        admin_msg = MIMEMultipart()
-        admin_msg['From'] = EMAIL_ADDRESS
-        admin_msg['To'] = YOUR_ADMIN_EMAIL
-        admin_msg['Subject'] = f"🔔 NEW LEAD: {company_name}"
-        admin_body = f"New lead generated!\n\nEmail: {user_email}\nCompany: {company_name}\n\nReport:\n{strategy_text}"
-        admin_msg.attach(MIMEText(admin_body, 'plain'))
-        
-        server.sendmail(EMAIL_ADDRESS, YOUR_ADMIN_EMAIL, admin_msg.as_string())
+        # Send to Admin (without attachment to save space, or with it if you prefer)
+        server.sendmail(EMAIL_ADDRESS, YOUR_ADMIN_EMAIL, msg.as_string())
         
         server.quit()
         return True
     except Exception as e:
-        st.error(f"❌ Email Failed. Error details: {e}")
+        st.error(f"❌ Email Failed: {e}")
         return False
 
 # --- MAIN UI ---
 def main():
     st.set_page_config(page_title="Free Google Ads Strategy Generator", page_icon="🚀")
-    st.markdown("""<style>.stButton>button {width: 100%; background-color: #FF4B4B; color: white;}</style>""", unsafe_allow_html=True)
+    st.markdown("""<style>.stButton>button {width: 100%; background-color: #000000; color: white; border-radius: 5px;}</style>""", unsafe_allow_html=True)
+    
+    # Display Logo on App if available
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=150)
+        
     st.title("🚀 Free Google Ads Strategy Generator")
     st.markdown("Enter your business details below to get a **custom roadmap**, **competitor analysis**, and **budget plan**.")
 
@@ -130,7 +197,7 @@ def main():
                 if not first_name or not company or not company_url:
                     st.warning("Please fill in your Name, Company, and Website URL.")
                 else:
-                    with st.spinner("🕵️ Analyzing..."):
+                    with st.spinner("Creating your PDF report..."):
                         strategy = generate_ppc_strategy(first_name, last_name, company, company_url, industry, goal, budget, competitor, problems)
                         st.session_state['strategy_data'] = strategy
                         st.session_state['user_info'] = {'company': company, 'budget': budget}
@@ -139,21 +206,18 @@ def main():
 
     # STEP 2
     if st.session_state['step'] == 2:
-        st.success("✅ Strategy Generated Successfully!")
-        st.markdown(f"### 🔍 Analysis for {st.session_state['user_info']['company']}")
-        st.info("We have analyzed your website and pain points to find a **Budget Efficiency Fix**.")
-        st.markdown("---")
-        st.markdown("### 🔒 Unlock Full Report")
-        st.markdown("Enter your email to receive the full PDF report.")
-
+        st.success("✅ Analysis Complete!")
+        st.info("We have generated a PDF report analyzing your website and competitors.")
+        
+        st.markdown("### 🔒 Unlock Your PDF Report")
         with st.form("email_gate"):
-            email = st.text_input("Your Email Address")
-            if st.form_submit_button("SEND ME THE REPORT"):
+            email = st.text_input("Where should we send the PDF?")
+            if st.form_submit_button("SEND ME THE PDF"):
                 if "@" not in email:
                     st.error("Please enter a valid email.")
                 else:
-                    with st.spinner("📧 Sending..."):
-                        success = send_email_report(email, st.session_state['strategy_data'], st.session_state['user_info']['company'])
+                    with st.spinner("Sending PDF..."):
+                        success = send_email_with_pdf(email, st.session_state['strategy_data'], st.session_state['user_info']['company'])
                         if success:
                             st.session_state['step'] = 3
                             st.rerun()
@@ -161,9 +225,7 @@ def main():
     # STEP 3
     if st.session_state['step'] == 3:
         st.balloons()
-        st.success("Report Sent! Check your inbox.")
-        with st.expander("👀 View Report in Browser"):
-            st.markdown(st.session_state['strategy_data'])
+        st.success("PDF Report Sent! Check your inbox.")
         if st.button("Start Over"):
             st.session_state['step'] = 1
             st.rerun()

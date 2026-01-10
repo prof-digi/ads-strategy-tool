@@ -200,10 +200,10 @@ def main():
                 competitor = st.text_input("Competitor URL")
             with col2:
                 last_name = st.text_input("Last Name")
-                industry = st.text_input("Industry (e.g., Plumber)")
+                industry = st.text_input("Industry (e.g. E-commerce, Sass)")
                 goal = st.selectbox("Primary Goal", ["Leads/Calls", "E-commerce Sales", "Brand Awareness"])
                 budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
-            problems = st.text_area("What are your biggest problems with Google Ads right now?", placeholder="e.g. High cost...")
+            problems = st.text_area("What are your biggest problems with Google Ads right now?", placeholder="e.g. Getting clicks but no conversions, High CPC...")
             
             if st.form_submit_button("GENERATE MY STRATEGY"):
                 if not first_name or not company or not company_url:

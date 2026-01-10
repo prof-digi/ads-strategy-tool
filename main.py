@@ -224,6 +224,17 @@ def main():
         st.markdown("### 🔒 Unlock Your PDF Report")
         with st.form("email_gate"):
             email = st.text_input("Where should we send the PDF?")
+            
+            # --- DISCLAIMER TEXT ---
+            st.markdown("""
+            <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
+            Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
+            You may unsubscribe from these communications at any time. For information on how to unsubscribe, as well as our 
+            privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
+            </div>
+            """, unsafe_allow_html=True)
+            # -----------------------
+
             if st.form_submit_button("SEND ME THE PDF"):
                 if "@" not in email:
                     st.error("Please enter a valid email.")

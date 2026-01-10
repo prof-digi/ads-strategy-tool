@@ -36,7 +36,6 @@ def clean_for_pdf(text):
         text = text.replace(char, replacement)
         
     # 2. Force convert to Latin-1 (Standard PDF encoding)
-    # 'ignore' will simply delete emojis like 🚀 instead of crashing
     return text.encode('latin-1', 'ignore').decode('latin-1')
 
 # --- PDF GENERATION CLASS ---
@@ -61,41 +60,34 @@ def create_pdf_report(raw_text, filename):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Sanitize the raw text immediately
-    # We process line by line, but cleaning it first helps
-    
     lines = raw_text.split('\n')
     
     for line in lines:
-        # Clean the line of emojis/bad chars
         clean_line = clean_for_pdf(line.replace('*', '').strip())
         
         if line.startswith('###') or line.startswith('**'):
-            # Sub-header
             if clean_line:
                 pdf.set_font('Arial', 'B', 12)
                 pdf.set_text_color(0, 0, 0)
                 pdf.cell(0, 8, clean_line, 0, 1)
         elif line.startswith('-'):
-            # Bullet point
             pdf.set_font('Arial', '', 11)
             pdf.set_text_color(50, 50, 50)
-            pdf.cell(5) # Indent
-            # chr(149) is a bullet point in Latin-1
+            pdf.cell(5) 
             pdf.cell(0, 6, f"{chr(149)} {clean_line[1:].strip()}", 0, 1)
         else:
-            # Regular text
             if clean_line:
                 pdf.set_font('Arial', '', 11)
                 pdf.set_text_color(50, 50, 50)
                 pdf.multi_cell(0, 6, clean_line)
-                pdf.ln(2) # Small gap after paragraphs
+                pdf.ln(2) 
                 
     pdf.output(filename)
     return filename
 
 # --- FUNCTION 1: GENERATE STRATEGY ---
 def generate_ppc_strategy(first_name, last_name, company_name, company_url, industry, goal, budget, competitor_url, problems):
+    # MEMORY: Using the requested model
     model = genai.GenerativeModel('gemini-flash-latest')
     prompt = f"""
     Act as a Senior Google Ads Strategist.
@@ -134,7 +126,6 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
     msg['To'] = user_email
     msg['Subject'] = f"🚀 Your Strategy Report for {company_name}"
 
-    # Email Body
     body = f"""
     <p>Hi there,</p>
     <p>Please find attached your custom Google Ads strategy report for <b>{company_name}</b>.</p>
@@ -144,14 +135,12 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
     msg.attach(MIMEText(body, 'html'))
     
     # Generate PDF
-    # Clean the company name for filename (remove spaces/bad chars)
     safe_name = "".join([c for c in company_name if c.isalnum() or c==' ']).strip().replace(' ', '_')
     pdf_filename = f"{safe_name}_Strategy.pdf"
     
     try:
         create_pdf_report(strategy_text, pdf_filename)
         
-        # Attach PDF
         with open(pdf_filename, "rb") as f:
             attach = MIMEApplication(f.read(),_subtype="pdf")
             attach.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
@@ -162,10 +151,7 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         
-        # Send to Client
         server.sendmail(EMAIL_ADDRESS, user_email, msg.as_string())
-        
-        # Send to Admin
         server.sendmail(EMAIL_ADDRESS, YOUR_ADMIN_EMAIL, msg.as_string())
         
         server.quit()
@@ -205,9 +191,20 @@ def main():
                 budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
             problems = st.text_area("What are your biggest problems with Google Ads right now?", placeholder="e.g. Getting clicks but no conversions, High CPC...")
             
+            # --- DISCLAIMER TEXT (STEP 1) ---
+            st.markdown("""
+            <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
+            Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
+            You may unsubscribe from these communications at any time. For information on how to unsubscribe, as well as our 
+            privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
+            </div>
+            """, unsafe_allow_html=True)
+            # --------------------------------
+
             if st.form_submit_button("GENERATE MY STRATEGY"):
-                if not first_name or not company or not company_url:
-                    st.warning("Please fill in your Name, Company, and Website URL.")
+                # REQUIRED FIELDS VALIDATION
+                if not first_name or not last_name or not company or not company_url:
+                    st.warning("Please fill in all required fields: First Name, Last Name, Company Name, and Website URL.")
                 else:
                     with st.spinner("Creating your PDF report..."):
                         strategy = generate_ppc_strategy(first_name, last_name, company, company_url, industry, goal, budget, competitor, problems)
@@ -225,7 +222,7 @@ def main():
         with st.form("email_gate"):
             email = st.text_input("Where should we send the PDF?")
             
-            # --- DISCLAIMER TEXT ---
+            # --- DISCLAIMER TEXT (STEP 2) ---
             st.markdown("""
             <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
             Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
@@ -233,7 +230,7 @@ def main():
             privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
             </div>
             """, unsafe_allow_html=True)
-            # -----------------------
+            # --------------------------------
 
             if st.form_submit_button("SEND ME THE PDF"):
                 if "@" not in email:

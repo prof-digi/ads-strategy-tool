@@ -167,9 +167,9 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
     msg['Subject'] = f"🚀 Your Strategy Report for {company_name}"
 
     body = f"""
-    <p>Hi there,</p>
+    <p>Hi {first_name},</p>
     <p>Please find attached your custom Google Ads strategy report for <b>{company_name}</b>.</p>
-    <p>We have analyzed your website and competitors to build this roadmap.</p>
+    <p>We have analyzed your website and competitors to build this roadmap and we hope you find it useful. Please get in touch if you have any questions or would like to discuss your Google Ads campaignd further.</p>
     <p>Best regards,<br>Profitable Digital Team</p>
     """
     msg.attach(MIMEText(body, 'html'))

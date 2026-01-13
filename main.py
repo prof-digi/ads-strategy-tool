@@ -22,38 +22,61 @@ except FileNotFoundError:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # --- HELPER: TEXT SANITIZER ---
-# This function removes emojis and fixes characters that crash the PDF generator
 def clean_for_pdf(text):
     if not isinstance(text, str):
         return str(text)
     
-    # 1. Replace "Smart Quotes" and other common crashers
+    # 1. Replace "Smart Quotes" and formatting chars
     replacements = {
         "’": "'", "‘": "'", "“": '"', "”": '"', 
-        "–": "-", "—": "-", "…": "..."
+        "–": "-", "—": "-", "…": "...",
+        "**": "", "__": "", # Remove bold/italic markers
+        "##": "", "###": "", "#": "", # Remove header hashes
+        "`": "" # Remove code ticks
     }
     for char, replacement in replacements.items():
         text = text.replace(char, replacement)
         
-    # 2. Force convert to Latin-1 (Standard PDF encoding)
+    # 2. Latin-1 encoding for PDF compatibility
     return text.encode('latin-1', 'ignore').decode('latin-1')
 
-# --- PDF GENERATION CLASS ---
+# --- PROFESSIONAL PDF CLASS ---
 class PDFReport(FPDF):
     def header(self):
-        # Logo: Ensure 'logo.png' is in your GitHub repo
+        # Logo
         if os.path.exists("logo.png"):
             self.image("logo.png", 10, 8, 33)
             
-        self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, 'Profitable.Digital Strategy Report', 0, 1, 'R')
-        self.ln(20)
+        # Title Styling
+        self.set_font('Arial', 'B', 15)
+        self.set_text_color(0, 51, 102) # Brand Navy Blue
+        self.cell(0, 10, 'Google Ads Strategy Roadmap', 0, 1, 'R')
+        
+        # Decorative Line
+        self.set_draw_color(200, 200, 200) # Light Grey Line
+        self.set_line_width(0.5)
+        self.line(10, 32, 200, 32)
+        self.ln(25) # Space after header
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(128)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+        self.cell(0, 10, f'Profitable Digital | Page {self.page_no()}', 0, 0, 'C')
+
+    def chapter_title(self, label):
+        # Section Headers
+        self.set_font('Arial', 'B', 12)
+        self.set_text_color(0, 51, 102) # Brand Navy Blue
+        self.cell(0, 8, label, 0, 1, 'L')
+        self.ln(1)
+
+    def body_text(self, text):
+        # Regular Text
+        self.set_font('Arial', '', 10)
+        self.set_text_color(50, 50, 50) # Dark Grey
+        self.multi_cell(0, 5, text)
+        self.ln(3)
 
 def create_pdf_report(raw_text, filename):
     pdf = PDFReport()
@@ -63,32 +86,44 @@ def create_pdf_report(raw_text, filename):
     lines = raw_text.split('\n')
     
     for line in lines:
-        clean_line = clean_for_pdf(line.replace('*', '').strip())
+        clean_line = clean_for_pdf(line.strip())
         
-        if line.startswith('###') or line.startswith('**'):
-            if clean_line:
-                pdf.set_font('Arial', 'B', 12)
-                pdf.set_text_color(0, 0, 0)
-                pdf.cell(0, 8, clean_line, 0, 1)
-        elif line.startswith('-'):
-            pdf.set_font('Arial', '', 11)
+        # Skip empty table lines or separators
+        if "---" in clean_line or clean_line.startswith("|"):
+            continue
+
+        if not clean_line:
+            pdf.ln(2) # Small space for empty lines
+            continue
+            
+        # Detect Headers based on content or previous formatting
+        # (Since we removed #, we check if the line looks like a title)
+        if len(clean_line) < 60 and (line.startswith('#') or line.startswith('**')):
+            pdf.ln(3)
+            pdf.chapter_title(clean_line)
+        
+        # Detect Bullet Points
+        elif line.strip().startswith('-') or line.strip().startswith('*'):
+            pdf.set_font('Arial', '', 10)
             pdf.set_text_color(50, 50, 50)
-            pdf.cell(5) 
-            pdf.cell(0, 6, f"{chr(149)} {clean_line[1:].strip()}", 0, 1)
+            pdf.cell(5) # Indent
+            # Clean the bullet marker itself
+            content = clean_line.lstrip('-').lstrip('*').strip()
+            pdf.multi_cell(0, 5, f"{chr(149)} {content}")
+            pdf.ln(1)
+            
+        # Regular Paragraph
         else:
-            if clean_line:
-                pdf.set_font('Arial', '', 11)
-                pdf.set_text_color(50, 50, 50)
-                pdf.multi_cell(0, 6, clean_line)
-                pdf.ln(2) 
+            pdf.body_text(clean_line)
                 
     pdf.output(filename)
     return filename
 
 # --- FUNCTION 1: GENERATE STRATEGY ---
 def generate_ppc_strategy(first_name, last_name, company_name, company_url, industry, goal, budget, competitor_url, problems):
-    # MEMORY: Using the requested model
     model = genai.GenerativeModel('gemini-flash-latest')
+    
+    # UPDATED PROMPT: Explicitly forbids tables and weird symbols
     prompt = f"""
     Act as a Senior Google Ads Strategist.
     Create a tactical proposal for a UK-based client named {first_name} {last_name}.
@@ -103,15 +138,20 @@ def generate_ppc_strategy(first_name, last_name, company_name, company_url, indu
     - **Current Pain Points:** {problems}
     - **Competitor:** {competitor_url}
 
-    ### REQUIRED OUTPUT (Clean Text for PDF):
-    Please format the response clearly. Do not use complex markdown tables, just lists and headers.
-    1. **Executive Summary**: 2 sentences on potential ROI.
-    2. **Website Analysis**: How {company_url} aligns with goals.
-    3. **Pain Point Analysis**: Fixes for: {problems}.
-    4. **Competitor Weaknesses**: Analysis of {competitor_url}.
-    5. **Budget Split**: Breakdown of £{budget}.
-    6. **Keyword Strategy**: 10 Keywords & 5 Negatives.
-    7. **Ad Copy**: 3 Headlines, 2 Descriptions.
+    ### REQUIRED OUTPUT FORMAT:
+    - Write in clean, professional paragraphs and bullet points.
+    - **DO NOT** use Markdown tables, pipes (|), or code blocks.
+    - **DO NOT** use hashtags (#) for headers, just write the header name clearly.
+    - **DO NOT** use bolding asterisks (**) in the final output, just write plain text.
+
+    ### REPORT SECTIONS:
+    1. Executive Summary (2 sentences on ROI).
+    2. Website Analysis (How {company_url} aligns with goals).
+    3. Pain Point Solutions (Fixes for: {problems}).
+    4. Competitor Weaknesses (Analysis of {competitor_url}).
+    5. Budget Split (Exact breakdown of £{budget} using a bulleted list).
+    6. Keyword Strategy (10 Keywords & 5 Negatives).
+    7. Ad Copy Blueprint (3 Headlines, 2 Descriptions).
     """
     try:
         response = model.generate_content(prompt)
@@ -146,7 +186,6 @@ def send_email_with_pdf(user_email, strategy_text, company_name):
             attach.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
             msg.attach(attach)
 
-        # Connect to Gmail (Port 587)
         server = smtplib.SMTP(SMTP_SERVER, 587)
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
@@ -191,7 +230,7 @@ def main():
                 budget = st.number_input("Monthly Budget (£)", min_value=500, value=1500)
             problems = st.text_area("What are your biggest problems with Google Ads right now?", placeholder="e.g. Getting clicks but no conversions, High CPC...")
             
-            # --- DISCLAIMER TEXT (STEP 1) ---
+            # --- DISCLAIMER TEXT ---
             st.markdown("""
             <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
             Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
@@ -199,10 +238,8 @@ def main():
             privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
             </div>
             """, unsafe_allow_html=True)
-            # --------------------------------
 
             if st.form_submit_button("GENERATE MY STRATEGY"):
-                # REQUIRED FIELDS VALIDATION
                 if not first_name or not last_name or not company or not company_url:
                     st.warning("Please fill in all required fields: First Name, Last Name, Company Name, and Website URL.")
                 else:
@@ -222,7 +259,7 @@ def main():
         with st.form("email_gate"):
             email = st.text_input("Where should we send the PDF?")
             
-            # --- DISCLAIMER TEXT (STEP 2) ---
+            # --- DISCLAIMER TEXT ---
             st.markdown("""
             <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
             Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
@@ -230,7 +267,6 @@ def main():
             privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
             </div>
             """, unsafe_allow_html=True)
-            # --------------------------------
 
             if st.form_submit_button("SEND ME THE PDF"):
                 if "@" not in email:

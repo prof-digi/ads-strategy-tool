@@ -235,7 +235,7 @@ def main():
             <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
             Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
             You may unsubscribe from these communications at any time. For information on how to unsubscribe, as well as our 
-            privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
+            privacy practices and commitment to protecting your privacy, please review our <a href="https://profitable.digital/privacy-policy/">Privacy Policy</a>.
             </div>
             """, unsafe_allow_html=True)
 
@@ -264,7 +264,7 @@ def main():
             <div style='font-size: 11px; color: #666; margin-top: 10px; margin-bottom: 20px; line-height: 1.4;'>
             Profitable Digital needs the contact information you provide to us to contact you about our products and services. 
             You may unsubscribe from these communications at any time. For information on how to unsubscribe, as well as our 
-            privacy practices and commitment to protecting your privacy, please review our Privacy Policy.
+            privacy practices and commitment to protecting your privacy, please review our <a href="https://profitable.digital/privacy-policy/">Privacy Policy</a>.
             </div>
             """, unsafe_allow_html=True)
 
